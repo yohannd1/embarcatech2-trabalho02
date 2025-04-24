@@ -24,9 +24,10 @@ const uint32_t ADC_RESOLUTION = 4095;
 static void on_button_press(uint gpio, uint32_t events);
 
 /**
- * Calcula a resistência para resistores de 4 bandas, com tolerância de 5%.
+ * Calcula a resistência para resistores de 4 bandas, com tolerância máxima de
+ * 5% para o intervalo especificado.
  *
- * @param resist o valor da resistência (510 <= resistance <= 100000)
+ * @param resist o valor da resistência (510.0f <= resistance <= 100000.0f)
  * @param digit1 (vai receber) a cor do primeiro dígito (0 <= *digit1 <= 9)
  * @param digit2 (vai receber) a cor do segundo dígito (0 <= *digit2 <= 9)
  * @param mult (vai receber) a cor do multiplicador (0 <= *mult <= 9)
@@ -152,5 +153,22 @@ static void on_button_press(uint gpio, uint32_t events) {
 }
 
 static bool calc_res_colors_4band(float resist, uint8_t *digit1, uint8_t *digit2, uint8_t *mult) {
-	return false;
+	// retornar falso se o valor estiver fora do intervalo especificado
+	if (resist < 510.0f || resist > 100000.0f)
+		return false;
+
+	float val = resist;
+	uint8_t m = 0;
+
+	while (val >= 100.0f) {
+		// dividir por 10 e aumentar o multiplicador
+		val /= 10.0f;
+		m++;
+	}
+
+	*digit1 = (int)val / 10;
+	*digit2 = (int)val % 10;
+	*mult = m;
+
+	return true;
 }
