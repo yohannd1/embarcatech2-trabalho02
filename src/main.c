@@ -6,6 +6,7 @@
 #include "hardware/i2c.h"
 
 #include "ssd1306.h"
+#include "ws2812b_matrix.h"
 
 #define DISPLAY_SDA_PIN 14
 #define DISPLAY_SCL_PIN 15
@@ -13,6 +14,8 @@
 #define DISPLAY_WIDTH 128
 #define DISPLAY_HEIGHT 64
 
+#define LED_ON_INTENSITY 0.02f
+#define LED_STRIP_PIN 7
 #define ADC_INPUT_PIN 28
 #define BUTTON_A_PIN 5
 #define BUTTON_B_PIN 6
@@ -21,6 +24,10 @@ const float r_conhecido = 10000.0f; // resistência conhecida (ohm)
 const float ADC_VREF = 3.31f; // tensão de referência do ADC
 const uint32_t ADC_RESOLUTION = 4095;
 
+static ws2812b_matrix_t matrix;
+static ws2812b_buffer_t buffer;
+
+static void die(const char *msg);
 static void on_button_press(uint gpio, uint32_t events);
 
 /**
@@ -36,8 +43,18 @@ static void on_button_press(uint gpio, uint32_t events);
  */
 static bool calc_res_colors_4band(float resist, uint8_t *digit1, uint8_t *digit2, uint8_t *mult);
 
+static void draw_resistor_repr(uint8_t digit1, uint8_t digit2, uint8_t mult);
+static ws2812b_color_t get_color_for(uint8_t idx);
+
 int main(void) {
 	stdio_init_all();
+
+	if (!ws2812b_matrix_init(&matrix, pio0, LED_STRIP_PIN))
+		die("falha ao inicializar a matriz de LEDs");
+
+	for (int i = 0; i < 25; i++)
+		buffer[i] = (ws2812b_color_t) { 0.0f, 0.0f, 0.0f };
+	ws2812b_matrix_draw(&matrix, &buffer);
 
 	gpio_init(BUTTON_A_PIN);
 	gpio_set_dir(BUTTON_A_PIN, GPIO_IN);
@@ -65,9 +82,7 @@ int main(void) {
 	adc_init();
 	adc_gpio_init(ADC_INPUT_PIN); // GPIO 28 como entrada analógica
 
-	float tensao;
-	char str_x[5]; // Buffer para armazenar a string
-	char str_y[5]; // Buffer para armazenar a string
+	char str_x[5], str_y[5];
 
 	const int PASS_COUNT = 500;
 
@@ -142,12 +157,15 @@ int main(void) {
 			continue;
 		}
 
-		printf("R = %.f OHM; { %u %u %u }\n", r, d1, d2, m);
+		draw_resistor_repr(d1, d2, m);
+
+		printf("Calculado (para %.f ohms): { %u %u %u }\n", r, d1, d2, m);
 	}
 }
 
 static void on_button_press(uint gpio, uint32_t events) {
 	if (gpio == BUTTON_B_PIN) {
+		printf("Entrando no modo bootsel...\n");
 		reset_usb_boot(0, 0);
 	}
 }
@@ -171,4 +189,41 @@ static bool calc_res_colors_4band(float resist, uint8_t *digit1, uint8_t *digit2
 	*mult = m;
 
 	return true;
+}
+
+static void draw_resistor_repr(uint8_t digit1, uint8_t digit2, uint8_t mult) {
+	buffer[5*2 + 1] = get_color_for(digit1);
+	buffer[5*2 + 2] = get_color_for(digit2);
+	buffer[5*2 + 3] = get_color_for(mult);
+	ws2812b_matrix_draw(&matrix, &buffer);
+}
+
+static ws2812b_color_t get_color_for(uint8_t idx) {
+	if (idx > 9) idx = 9;
+
+	const ws2812b_color_t colors[10] = {
+		{ 0.0f, 0.0f,  0.0f }, // preto
+		{ 0.3f, 0.2f,  0.0f }, // marrom (não muito bom)
+		{ 1.0f, 0.0f,  0.0f }, // vermelho
+		{ 1.0f, 0.5f,  0.0f }, // laranja
+		{ 1.0f, 1.0f,  0.0f }, // amarelo
+		{ 0.0f, 1.0f,  0.0f }, // verde
+		{ 0.0f, 0.0f,  1.0f }, // azul
+		{ 0.5f, 0.15f, 1.0f }, // violeta
+		{ 0.5f, 0.5f,  0.5f }, // cinza
+		{ 1.0f, 1.0f,  1.0f }, // branco
+	};
+
+	ws2812b_color_t ret = colors[idx];
+	ret.r *= LED_ON_INTENSITY;
+	ret.g *= LED_ON_INTENSITY;
+	ret.b *= LED_ON_INTENSITY;
+	return ret;
+}
+
+static void die(const char *msg) {
+	while (true) {
+		printf("ERRO FATAL: %s\n", msg);
+		sleep_ms(2000);
+	}
 }

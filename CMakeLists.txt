@@ -13,6 +13,7 @@ pico_sdk_init()
 add_executable(${PROJECT}
     src/main.c
     src/ssd1306.c
+    src/ws2812b_matrix.c
 )
 
 target_include_directories(${PROJECT} PRIVATE
@@ -23,7 +24,10 @@ target_link_libraries(${PROJECT}
     pico_stdlib
     hardware_adc
     hardware_i2c
+    hardware_pio
 )
+
+pico_generate_pio_header(${PROJECT} ${CMAKE_CURRENT_LIST_DIR}/src/ws2812b.pio)
 
 pico_set_program_name(${PROJECT} "${PROJECT}")
 pico_set_program_version(${PROJECT} "0.1")
