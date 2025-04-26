@@ -20,15 +20,12 @@
 #define BUTTON_A_PIN 5
 #define BUTTON_B_PIN 6
 
-const float r_conhecido = 10000.0f; // resistência conhecida (ohm)
-const float ADC_VREF = 3.31f; // tensão de referência do ADC
+const float R_CONHECIDO = 10000.0f; // resistência conhecida (ohm)
+const float ADC_VREF = 3.3f; // tensão de referência do ADC
 const uint32_t ADC_RESOLUTION = 4095;
 
 static ws2812b_matrix_t matrix;
 static ws2812b_buffer_t buffer;
-
-static void die(const char *msg);
-static void on_button_press(uint gpio, uint32_t events);
 
 /**
  * Calcula a resistência para resistores de 4 bandas, com tolerância máxima de
@@ -45,6 +42,8 @@ static bool calc_res_colors_4band(float resist, uint8_t *digit1, uint8_t *digit2
 
 static void draw_resistor_repr(uint8_t digit1, uint8_t digit2, uint8_t mult);
 static ws2812b_color_t get_color_for(uint8_t idx);
+static void die(const char *msg);
+static void on_button_press(uint gpio, uint32_t events);
 
 int main(void) {
 	stdio_init_all();
@@ -75,92 +74,80 @@ int main(void) {
 	ssd1306_t display;
 	ssd1306_init(&display, DISPLAY_WIDTH, DISPLAY_HEIGHT, false, 0x3C, DISPLAY_I2C_PORT);
 
-	// Limpa o display. O display inicia com todos os pixels apagados.
 	ssd1306_fill(&display, false);
 	ssd1306_send_data(&display);
 
 	adc_init();
-	adc_gpio_init(ADC_INPUT_PIN); // GPIO 28 como entrada analógica
+	adc_gpio_init(ADC_INPUT_PIN);
 
 	char str_x[5], str_y[5];
 
-	const int PASS_COUNT = 500;
-
-	/* bool cor = true; */
-	/* while (true) { */
-	/* 	adc_select_input(2); // Seleciona o ADC para eixo X. O pino 28 como entrada analógica */
-
-	/* 	float soma = 0.0f; */
-	/* 	for (int i = 0; i < PASS_COUNT; i++) { */
-	/* 		/1* soma += adc_read(); *1/ */
-	/* 		soma += 800; */
-	/* 		sleep_ms(1); */
-	/* 	} */
-	/* 	float media = soma / PASS_COUNT; */
-
-	/* 	// Fórmula simplificada: r_x = r_conhecido * ADC_encontrado /(ADC_RESOLUTION - adc_encontrado) */
-	/* 	float r_x = (r_conhecido * media) / (ADC_RESOLUTION - media); */
-
-	/* 	snprintf(str_x, 5, "%.0f", media); */
-	/* 	snprintf(str_y, 5, "%.0f", r_x); */
-
-	/* 	// cor = !cor; */
-	/* 	//  Atualiza o conteúdo do display com animações */
-
-	/* 	ssd1306_fill(&display, !cor); */
-	/* 	ssd1306_rect(&display, 3, 3, 122, 60, cor, !cor); */
-	/* 	ssd1306_line(&display, 3, 25, 123, 25, cor); */
-	/* 	ssd1306_line(&display, 3, 37, 123, 37, cor); */
-
-	/* 	uint8_t x, y; */
-
-	/* 	x = 8, y = 6; */
-	/* 	ssd1306_draw_string(&display, "CEPEDI   TIC37", &x, &y); */
-
-	/* 	x = 20, y = 16; */
-	/* 	ssd1306_draw_string(&display, "EMBARCATECH", &x, &y); */
-
-	/* 	x = 10, y = 28; */
-	/* 	ssd1306_draw_string(&display, "  Ohmimetro", &x, &y); */
-
-	/* 	x = 13, y = 41; */
-	/* 	ssd1306_draw_string(&display, "ADC", &x, &y); */
-
-	/* 	x = 50, y = 41; */
-	/* 	ssd1306_draw_string(&display, "Resisten.", &x, &y); */
-
-	/* 	ssd1306_line(&display, 44, 37, 44, 60, cor); */
-
-	/* 	x = 8, y = 52; */
-	/* 	ssd1306_draw_string(&display, str_x, &x, &y); */
-
-	/* 	x = 59, y = 52; */
-	/* 	ssd1306_draw_string(&display, str_y, &x, &y); */
-
-	/* 	ssd1306_send_data(&display); */
-
-	/* 	sleep_ms(700); */
-	/* } */
+	const size_t PASS_COUNT = 500;
 
 	while (true) {
-		float r;
-		printf("Valor: ");
-		if (scanf("%f", &r) == 0) {
-			printf("\nValor digitado inválido!\n");
-			fflush(stdin);
-			continue;
+		adc_select_input(2); // referente ao GPIO 28
+
+		printf("Vamos calcular...\n");
+
+		float soma = 0.0f;
+		for (int i = 0; i < PASS_COUNT; i++) {
+			soma += adc_read();
+			sleep_ms(1);
 		}
+		float adc_encontrado = soma / PASS_COUNT;
+
+		printf("Encontrado adc = %.f\n", adc_encontrado);
+
+		// Fórmula simplificada: r_x = R_CONHECIDO * ADC_encontrado / (ADC_RESOLUTION - adc_encontrado)
+		float r_x = (R_CONHECIDO * adc_encontrado) / (ADC_RESOLUTION - adc_encontrado);
 
 		uint8_t d1, d2, m;
-		if (!calc_res_colors_4band(r, &d1, &d2, &m)) {
+		if (calc_res_colors_4band(r_x, &d1, &d2, &m)) {
+			printf("Código de 4 bandas calculado (para %.f ohms): { %u %u %u } (tol. 5%)\n", r_x, d1, d2, m);
+			draw_resistor_repr(d1, d2, m);
+		} else {
 			printf("Falha ao calcular o valor da resistência\n");
-			continue;
 		}
 
-		draw_resistor_repr(d1, d2, m);
+		snprintf(str_x, sizeof(str_x) / sizeof(str_x[0]), "%.0f", adc_encontrado);
+		snprintf(str_y, sizeof(str_y) / sizeof(str_y[0]), "%.0f", r_x);
 
-		printf("Calculado (para %.f ohms): { %u %u %u }\n", r, d1, d2, m);
+		ssd1306_fill(&display, 1);
+		ssd1306_rect(&display, 3, 3, 122, 60, 1, 0);
+		ssd1306_line(&display, 3, 25, 123, 25, 1);
+		ssd1306_line(&display, 3, 37, 123, 37, 1);
+
+		uint8_t x, y;
+
+		x = 8, y = 6;
+		ssd1306_draw_string(&display, "CEPEDI   TIC37", &x, &y);
+
+		x = 20, y = 16;
+		ssd1306_draw_string(&display, "EMBARCATECH", &x, &y);
+
+		x = 10, y = 28;
+		ssd1306_draw_string(&display, "  Ohmimetro", &x, &y);
+
+		x = 13, y = 41;
+		ssd1306_draw_string(&display, "ADC", &x, &y);
+
+		x = 50, y = 41;
+		ssd1306_draw_string(&display, "Resisten.", &x, &y);
+
+		ssd1306_line(&display, 44, 37, 44, 60, 1);
+
+		x = 8, y = 52;
+		ssd1306_draw_string(&display, str_x, &x, &y);
+
+		x = 59, y = 52;
+		ssd1306_draw_string(&display, str_y, &x, &y);
+
+		ssd1306_send_data(&display);
+
+		sleep_ms(700);
 	}
+
+	return 0;
 }
 
 static void on_button_press(uint gpio, uint32_t events) {
