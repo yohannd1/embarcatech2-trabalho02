@@ -47,6 +47,7 @@ void ssd1306_hline(ssd1306_t *disp, uint8_t x0, uint8_t x1, uint8_t y, bool valu
 void ssd1306_vline(ssd1306_t *disp, uint8_t x, uint8_t y0, uint8_t y1, bool value);
 uint8_t ssd1306_draw_char(ssd1306_t *disp, char c, uint8_t x, uint8_t y);
 
-void ssd1306_draw_string(ssd1306_t *disp, const char *str, uint8_t *x, uint8_t *y);
+void ssd1306_draw_string(ssd1306_t *disp, const char *str, uint8_t x, uint8_t y);
+void ssd1306_draw_string_mobile(ssd1306_t *disp, const char *str, uint8_t *x, uint8_t *y);
 
 #endif

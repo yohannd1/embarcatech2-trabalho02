@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 
 #include "pico/stdlib.h"
 #include "pico/bootrom.h"
@@ -20,8 +21,7 @@
 #define BUTTON_A_PIN 5
 #define BUTTON_B_PIN 6
 
-const float R_CONHECIDO = 10000.0f; // resistência conhecida (ohm)
-const float ADC_VREF = 3.3f; // tensão de referência do ADC
+const float R_CONHECIDO = 100000.0f; // resistência conhecida (ohm)
 const uint32_t ADC_RESOLUTION = 4095;
 
 static ws2812b_matrix_t matrix;
@@ -39,6 +39,15 @@ static ws2812b_buffer_t buffer;
  * Retorna um valor indicando se a função rodou com sucesso.
  */
 static bool calc_res_colors_4band(float resist, uint8_t *digit1, uint8_t *digit2, uint8_t *mult);
+
+/**
+ * Calcula o valor mais próximo da série E24
+ *
+ * Se o valor providenciado estiver igualmente próximo de dois valores da série, pega o menor número.
+ *
+ * @param two_digits os dois dígitos mais significantes da resistência atual
+ */
+static uint8_t closest_e24_value(uint8_t two_digits);
 
 static void draw_resistor_repr(uint8_t digit1, uint8_t digit2, uint8_t mult);
 static ws2812b_color_t get_color_for(uint8_t idx);
@@ -80,9 +89,10 @@ int main(void) {
 	adc_init();
 	adc_gpio_init(ADC_INPUT_PIN);
 
-	char str_x[5], str_y[5];
-
 	const size_t PASS_COUNT = 500;
+
+	char str_buf[16];
+	const size_t str_max = sizeof(str_buf) / sizeof(str_buf[0]);
 
 	while (true) {
 		adc_select_input(2); // referente ao GPIO 28
@@ -101,46 +111,53 @@ int main(void) {
 		// Fórmula simplificada: r_x = R_CONHECIDO * ADC_encontrado / (ADC_RESOLUTION - adc_encontrado)
 		float r_x = (R_CONHECIDO * adc_encontrado) / (ADC_RESOLUTION - adc_encontrado);
 
+		/* float r_x; */
+		/* if (!fscanf(stdin, "%f", &r_x)) { */
+		/* 	printf("whoop\n"); */
+		/* 	fflush(stdin); */
+		/* } */
+
+		int e24 = -1;
+
 		uint8_t d1, d2, m;
 		if (calc_res_colors_4band(r_x, &d1, &d2, &m)) {
 			printf("Código de 4 bandas calculado (para %.f ohms): { %u %u %u } (tol. 5%)\n", r_x, d1, d2, m);
+			e24 = closest_e24_value(d1 * 10 + d2);
+			printf("Valor da série: %d\n", e24);
 			draw_resistor_repr(d1, d2, m);
 		} else {
 			printf("Falha ao calcular o valor da resistência\n");
 		}
 
-		snprintf(str_x, sizeof(str_x) / sizeof(str_x[0]), "%.0f", adc_encontrado);
-		snprintf(str_y, sizeof(str_y) / sizeof(str_y[0]), "%.0f", r_x);
+		ssd1306_fill(&display, 0);
+		ssd1306_rect(&display, 3, 3, 122, 60, 0, 1);
+		ssd1306_line(&display, 3, 25, 123, 25, 0);
+		ssd1306_line(&display, 3, 37, 123, 37, 0);
 
-		ssd1306_fill(&display, 1);
-		ssd1306_rect(&display, 3, 3, 122, 60, 1, 0);
-		ssd1306_line(&display, 3, 25, 123, 25, 1);
-		ssd1306_line(&display, 3, 37, 123, 37, 1);
+		uint8_t x = 12, y = 6;
 
-		uint8_t x, y;
+		ssd1306_draw_string(&display, "EMBARCATECH II", x, y);
+		y += 8;
 
-		x = 8, y = 6;
-		ssd1306_draw_string(&display, "CEPEDI   TIC37", &x, &y);
+		x = 18;
+		ssd1306_draw_string(&display, "OHMIMETRO", x, y);
+		y += 12;
 
-		x = 20, y = 16;
-		ssd1306_draw_string(&display, "EMBARCATECH", &x, &y);
+		ssd1306_line(&display, 10, y, DISPLAY_WIDTH - 10, y, 1);
+		y += 2;
 
-		x = 10, y = 28;
-		ssd1306_draw_string(&display, "  Ohmimetro", &x, &y);
+		x = 8;
+		snprintf(str_buf, str_max, "ADC %.0f", adc_encontrado);
+		ssd1306_draw_string(&display, str_buf, x, y);
+		y += 8;
 
-		x = 13, y = 41;
-		ssd1306_draw_string(&display, "ADC", &x, &y);
+		snprintf(str_buf, str_max, "Rx %.0f ohm", r_x);
+		ssd1306_draw_string(&display, str_buf, x, y);
+		y += 8;
 
-		x = 50, y = 41;
-		ssd1306_draw_string(&display, "Resisten.", &x, &y);
-
-		ssd1306_line(&display, 44, 37, 44, 60, 1);
-
-		x = 8, y = 52;
-		ssd1306_draw_string(&display, str_x, &x, &y);
-
-		x = 59, y = 52;
-		ssd1306_draw_string(&display, str_y, &x, &y);
+		snprintf(str_buf, str_max, "E24 n. %d", e24);
+		ssd1306_draw_string(&display, str_buf, x, y);
+		y += 8;
 
 		ssd1306_send_data(&display);
 
@@ -190,7 +207,7 @@ static ws2812b_color_t get_color_for(uint8_t idx) {
 
 	const ws2812b_color_t colors[10] = {
 		{ 0.0f, 0.0f,  0.0f }, // preto
-		{ 0.3f, 0.2f,  0.0f }, // marrom (não muito bom)
+		{ 0.2f, 0.25f, 0.0f }, // marrom (não muito bom)
 		{ 1.0f, 0.0f,  0.0f }, // vermelho
 		{ 1.0f, 0.5f,  0.0f }, // laranja
 		{ 1.0f, 1.0f,  0.0f }, // amarelo
@@ -206,6 +223,27 @@ static ws2812b_color_t get_color_for(uint8_t idx) {
 	ret.g *= LED_ON_INTENSITY;
 	ret.b *= LED_ON_INTENSITY;
 	return ret;
+}
+
+static uint8_t closest_e24_value(uint8_t two_digits) {
+	const uint8_t e24[] = {
+		10, 11, 12, 13, 15, 16, 18, 20, 22, 24, 27, 30,
+		33, 36, 39, 43, 47, 51, 56, 62, 68, 75, 82, 91,
+	};
+	const size_t len = sizeof(e24) / sizeof(e24[0]);
+
+	if (two_digits <= e24[0]) return e24[0];
+	if (two_digits >= e24[len-1]) return e24[len-1];
+
+	for (int i = 0; i < len - 1; i++) {
+		if (two_digits <= e24[i+1]) {
+			int dist1 = (int)two_digits - (int)e24[i];
+			int dist2 = (int)two_digits - (int)e24[i+1];
+
+			if (abs(dist1) < abs(dist2)) return e24[i];
+			else return e24[i+1];
+		}
+	}
 }
 
 static void die(const char *msg) {
