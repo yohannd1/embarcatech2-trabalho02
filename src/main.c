@@ -41,9 +41,8 @@ static ws2812b_buffer_t buffer;
 static bool calc_res_colors_4band(float resist, uint8_t *digit1, uint8_t *digit2, uint8_t *mult);
 
 /**
- * Calcula o valor mais próximo da série E24
- *
- * Se o valor providenciado estiver igualmente próximo de dois valores da série, pega o menor número.
+ * Calcula o valor mais próximo da série E24. Se o valor providenciado estiver
+ * igualmente próximo de dois valores da série, pega o menor número.
  *
  * @param two_digits os dois dígitos mais significantes da resistência atual
  */
