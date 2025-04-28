@@ -21,7 +21,7 @@
 #define BUTTON_A_PIN 5
 #define BUTTON_B_PIN 6
 
-const float R_CONHECIDO = 100000.0f; // resistência conhecida (ohm)
+const float R_CONHECIDO = 1000.0f; // resistência conhecida (ohm)
 const uint32_t ADC_RESOLUTION = 4095;
 
 static ws2812b_matrix_t matrix;
